@@ -28,22 +28,28 @@ import Cardano.Wallet.Api.Types
 import Control.Monad
     ( replicateM )
 import Data.Aeson
-    ( FromJSON, ToJSON, decode, eitherDecode, encode )
+    ( FromJSON, ToJSON, eitherDecode )
 import Data.ByteString.Lazy
     ( ByteString )
 import Data.Either
     ( isRight, rights )
+import Data.Typeable
+    ( Typeable )
 import Data.Word
     ( Word32, Word8 )
-import Test.Hspec
-    ( Expectation, Spec, describe, it, shouldBe, shouldSatisfy )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , arbitraryBoundedEnum
-    , arbitraryPrintableChar
-    , choose
-    , property
+import Test.Aeson.GenericSpecs
+    ( GoldenDirectoryOption (CustomDirectoryName)
+    , Proxy (Proxy)
+    , Settings
+    , defaultSettings
+    , goldenDirectoryOption
+    , roundtripAndGoldenSpecsWithSettings
+    , useModuleNameAsSubDirectory
     )
+import Test.Hspec
+    ( Spec, describe, it, shouldSatisfy )
+import Test.QuickCheck
+    ( Arbitrary (..), arbitraryBoundedEnum, arbitraryPrintableChar, choose )
 import Test.QuickCheck.Arbitrary.Generic
     ( genericArbitrary, genericShrink )
 import Test.QuickCheck.Instances.Time
@@ -60,26 +66,32 @@ spec = do
         it "Wallet" $
             (eitherDecode exampleWallet :: Either String Wallet)
                 `shouldSatisfy` isRight
-    describe "can perform roundtrip JSON serialization & deserialization" $ do
-        it "Wallet" $
-            property $ \a -> canRoundTrip (a :: Wallet)
-        it "ApiT AddressPoolGap" $
-            property $ \a -> canRoundTrip (a :: ApiT AddressPoolGap)
-        it "WalletBalance" $
-            property $ \a -> canRoundTrip (a :: WalletBalance)
-        it "WalletDelegation" $
-            property $ \a -> canRoundTrip (a :: WalletDelegation)
-        it "WalletId" $
-            property $ \a -> canRoundTrip (a :: WalletId)
-        it "WalletName" $
-            property $ \a -> canRoundTrip (a :: ApiT WalletName)
-        it "WalletPassphraseInfo" $
-            property $ \a -> canRoundTrip (a :: WalletPassphraseInfo)
-        it "WalletState" $
-            property $ \a -> canRoundTrip (a :: WalletState)
+    describe
+        ("can perform roundtrip JSON serialization & deserialization, " <>
+         "and match existing golden files") $ do
+            roundtripAndGolden $ Proxy @ Wallet
+            roundtripAndGolden $ Proxy @ (ApiT AddressPoolGap)
+            roundtripAndGolden $ Proxy @ WalletBalance
+            roundtripAndGolden $ Proxy @ WalletDelegation
+            roundtripAndGolden $ Proxy @ WalletId
+            roundtripAndGolden $ Proxy @ (ApiT WalletName)
+            roundtripAndGolden $ Proxy @ WalletBalance
+            roundtripAndGolden $ Proxy @ WalletPassphraseInfo
+            roundtripAndGolden $ Proxy @ WalletState
 
-canRoundTrip :: Eq a => FromJSON a => ToJSON a => Show a => a -> Expectation
-canRoundTrip a = decode (encode a) `shouldBe` Just a
+roundtripAndGolden
+    :: forall a. (Arbitrary a, ToJSON a, FromJSON a, Typeable a)
+    => Proxy a
+    -> Spec
+roundtripAndGolden = roundtripAndGoldenSpecsWithSettings settings
+  where
+    settings :: Settings
+    settings = defaultSettings
+        { goldenDirectoryOption =
+            CustomDirectoryName "test/data/Cardano/Wallet/Api"
+        , useModuleNameAsSubDirectory =
+            False
+        }
 
 exampleWallet :: ByteString
 exampleWallet = [r|
